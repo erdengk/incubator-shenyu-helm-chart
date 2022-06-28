@@ -4,54 +4,40 @@ on:
   push:
 
 jobs:
-
-  helm:
-    name: K8s chart test
+  lint-test:
     runs-on: ubuntu-latest
-
     steps:
-
-      - name: Create k8s Kind Cluster
-        uses: helm/kind-action@v1.3.0
-
       - name: Checkout
         uses: actions/checkout@v2
         with:
-          submodules: recursive
+          fetch-depth: 0
 
-      - name: Lint
+      - name: Set up Helm
+        uses: azure/setup-helm@v1
+        with:
+          version: v3.8.1
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: 3.7
+
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@v2.2.1
+
+      - name: Run chart-testing (list-changed)
+        id: list-changed
         run: |
-          docker run --rm --interactive --network host \
-              --name ct-lint \
-              --volume $PWD:/workdir \
-              --workdir /workdir/charts/shenyu \
-              quay.io/helmpack/chart-testing:v3.4.0 sh -c 'helm dependency update \
-               && cd ../.. \
-               && helm repo add shenyu https://apache.github.io/incubator-shenyu-helm-chart \
-               && ct lint \
-                  --charts charts/shenyu '
+          changed=$(ct list-changed --target-branch ${{ github.event.repository.default_branch }})
+          if [[ -n "$changed" ]]; then
+            echo "::set-output name=changed::true"
+          fi
 
-      - name: fix permissions
-        run: |
-          sudo mkdir -p $HOME/.kube
-          sudo chmod -R 777 $HOME/.kube
+      - name: Run chart-testing (lint)
+        run: ct lint --target-branch ${{ github.event.repository.default_branch }}
 
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.2.0
+        if: steps.list-changed.outputs.changed == 'true'
 
-
-
-      - name: Test
-        env:
-          KIND_CLUSTER_NAME: kind
-          SKIP_CLUSTER_CREATION: true
-        run: |
-          kind get kubeconfig > $HOME/.kube/kind-config-kind
-          docker run --rm --interactive --network host \
-              --name ct \
-              --volume $HOME/.kube/kind-config-kind:/root/.kube/config \
-              --volume $PWD:/workdir \
-              --workdir /workdir/charts/shenyu \
-              quay.io/helmpack/chart-testing:v3.4.0 sh -c 'helm dependency update \
-               && cd ../.. \
-               && helm repo add shenyu https://apache.github.io/incubator-shenyu-helm-chart \
-               && ct install \
-                  --charts charts/shenyu '
+      - name: Run chart-testing (install)
+        run: ct install
