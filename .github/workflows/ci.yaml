@@ -11,11 +11,11 @@ jobs:
   helm:
     name: K8s chart test
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        k8s: [v1.16.15]
 
     steps:
+
+      - name: Create k8s Kind Cluster
+        uses: helm/kind-action@v1.3.0
 
       - name: Checkout
         uses: actions/checkout@v2
@@ -39,12 +39,7 @@ jobs:
           sudo mkdir -p $HOME/.kube
           sudo chmod -R 777 $HOME/.kube
 
-      - name: KinD (Kubernetes in Docker) Action
-        uses: engineerd/setup-kind@v0.5.0
-        with:
-          version: v0.11.0
-          config: test/kind.yaml
-          image: kindest/node:${{ matrix.k8s }}
+
 
 
       - name: Test
